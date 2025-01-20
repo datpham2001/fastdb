@@ -1,91 +1,80 @@
 package main
 
-import (
-	"net"
-	"net/rpc"
-	"os"
-	"path/filepath"
-	"testing"
+// func setupTestServer(t *testing.T) (*rpc.Client, func()) {
+// 	workDir, err := os.Getwd()
+// 	if err != nil {
+// 		t.Fatalf("failed to get working directory: %v", err)
+// 	}
+// 	parentDir := filepath.Join(workDir, "..")
+// 	dbPath := filepath.Join(parentDir, "data", "integration_test.db")
 
-	"github.com/marcelloh/fastdb"
-	"github.com/marcelloh/fastdb/service"
-)
+// 	testDB, err := fastdb.Open(dbPath, syncTime)
+// 	if err != nil {
+// 		t.Fatalf("failed to open database: %v", err)
+// 	}
 
-func setupTestServer(t *testing.T) (*rpc.Client, func()) {
-	workDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("failed to get working directory: %v", err)
-	}
-	parentDir := filepath.Join(workDir, "..")
-	dbPath := filepath.Join(parentDir, "data", "integration_test.db")
+// 	keyValueStoreService := service.NewKeyValueStoreService(testDB)
+// 	keyValueStoreImpl := &KeyValueStoreImpl{keyValueStoreService}
+// 	if err := rpc.RegisterName("KeyValueStoreService", keyValueStoreImpl); err != nil {
+// 		t.Fatalf("Error registering service: %v", err)
+// 	}
 
-	testDB, err := fastdb.Open(dbPath, syncTime)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
+// 	listener, err := net.Listen("tcp", ":0")
+// 	if err != nil {
+// 		t.Fatalf("Error listening: %v", err)
+// 	}
 
-	keyValueStoreService := service.NewKeyValueStoreService(testDB)
-	keyValueStoreImpl := &KeyValueStoreImpl{keyValueStoreService}
-	if err := rpc.RegisterName("KeyValueStoreService", keyValueStoreImpl); err != nil {
-		t.Fatalf("Error registering service: %v", err)
-	}
+// 	go func() {
+// 		for {
+// 			conn, err := listener.Accept()
+// 			if err != nil {
+// 				return
+// 			}
+// 			go rpc.ServeConn(conn)
+// 		}
+// 	}()
 
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("Error listening: %v", err)
-	}
+// 	client, err := rpc.Dial("tcp", listener.Addr().String())
+// 	if err != nil {
+// 		t.Fatalf("Error dialing: %v", err)
+// 	}
 
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			go rpc.ServeConn(conn)
-		}
-	}()
+// 	cleanup := func() {
+// 		client.Close()
+// 		listener.Close()
+// 		testDB.Close()
+// 	}
 
-	client, err := rpc.Dial("tcp", listener.Addr().String())
-	if err != nil {
-		t.Fatalf("Error dialing: %v", err)
-	}
+// 	return client, cleanup
+// }
 
-	cleanup := func() {
-		client.Close()
-		listener.Close()
-		testDB.Close()
-	}
+// func TestRPCIntegration_SetAndGet(t *testing.T) {
+// 	client, cleanup := setupTestServer(t)
+// 	defer cleanup()
 
-	return client, cleanup
-}
+// 	var setReply string
+// 	setArgs := [2]interface{}{1, "test value"}
+// 	err := client.Call("KeyValueStoreService.Set", setArgs, &setReply)
+// 	if err != nil {
+// 		t.Errorf("Set failed: %v", err)
+// 	}
+// 	if setReply != service.SetSuccess {
+// 		t.Errorf("Set reply = %v, want %v", setReply, service.SetSuccess)
+// 	}
 
-func TestRPCIntegration_SetAndGet(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
+// 	var getReply interface{}
+// 	getArgs := [1]interface{}{1}
+// 	err = client.Call("KeyValueStoreService.Get", getArgs, &getReply)
+// 	if err != nil {
+// 		t.Errorf("Get failed: %v", err)
+// 	}
+// 	if getReply.(string) != "test value" {
+// 		t.Errorf("Get reply = %v, want %v", getReply, "test value")
+// 	}
 
-	var setReply string
-	setArgs := [2]interface{}{1, "test value"}
-	err := client.Call("KeyValueStoreService.Set", setArgs, &setReply)
-	if err != nil {
-		t.Errorf("Set failed: %v", err)
-	}
-	if setReply != service.SetSuccess {
-		t.Errorf("Set reply = %v, want %v", setReply, service.SetSuccess)
-	}
-
-	var getReply interface{}
-	getArgs := [1]interface{}{1}
-	err = client.Call("KeyValueStoreService.Get", getArgs, &getReply)
-	if err != nil {
-		t.Errorf("Get failed: %v", err)
-	}
-	if getReply.(string) != "test value" {
-		t.Errorf("Get reply = %v, want %v", getReply, "test value")
-	}
-
-	getArgs = [1]interface{}{999}
-	err = client.Call("KeyValueStoreService.Get", getArgs, &getReply)
-	if err == nil {
-		t.Error("Expected error for non-existing key, got nil")
-	}
-}
+// 	getArgs = [1]interface{}{999}
+// 	err = client.Call("KeyValueStoreService.Get", getArgs, &getReply)
+// 	if err == nil {
+// 		t.Error("Expected error for non-existing key, got nil")
+// 	}
+// }

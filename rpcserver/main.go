@@ -7,13 +7,15 @@ import (
 	"net/rpc"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/marcelloh/fastdb"
+	"github.com/marcelloh/fastdb/replication/election"
+	replicationmanager "github.com/marcelloh/fastdb/replication/replication-manager"
 	"github.com/marcelloh/fastdb/service"
 )
 
 const (
-	rpcPort  = ":8080"
 	syncTime = 1000
 )
 
@@ -61,23 +63,45 @@ func init() {
 	}
 }
 
+func getNode() (int, string) {
+	nodeID, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatalf("Error converting node ID to int: %v", err)
+	}
+
+	return nodeID, os.Args[2]
+}
+
 func main() {
 	if err := initDB(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	keyValueStoreService := service.NewKeyValueStoreService(db)
+	nodeID, nodePort := getNode()
+	nodeAddress := fmt.Sprintf("localhost:%s", nodePort)
+
+	peers := map[int]string{
+		1: "localhost:8080",
+		2: "localhost:8081",
+		3: "localhost:8082",
+		4: "localhost:8083",
+	}
+	delete(peers, nodeID)
+
+	election := election.NewBullyElection(nodeID, nodeAddress, peers)
+	replicationManager := replicationmanager.NewReplicationManager(nodeID, db, election)
+	keyValueStoreService := service.NewKeyValueStoreService(replicationManager)
 	keyValueStoreImpl := &KeyValueStoreImpl{keyValueStoreService}
 	if err := rpc.RegisterName("KeyValueStoreService", keyValueStoreImpl); err != nil {
 		log.Fatalf("Error registering service: %v", err)
 	}
 
-	listener, err := net.Listen("tcp", rpcPort)
+	listener, err := net.Listen("tcp", ":"+nodePort)
 	if err != nil {
 		log.Fatalf("Error listening: %v", err)
 	}
 
-	fmt.Println("Server is running on port", rpcPort)
+	fmt.Println("Server is running on port", nodePort)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

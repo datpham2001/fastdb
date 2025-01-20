@@ -5,21 +5,21 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/marcelloh/fastdb"
+	replicationmanager "github.com/marcelloh/fastdb/replication/replication-manager"
 )
 
 const (
-	KeyBucket  = "kvstore"
 	SetSuccess = "Set key successfully"
 )
 
 type KeyValueStoreService struct {
-	db     *fastdb.DB
-	bucket string
+	replication *replicationmanager.ReplicationManager
 }
 
-func NewKeyValueStoreService(db *fastdb.DB) *KeyValueStoreService {
-	return &KeyValueStoreService{db: db, bucket: KeyBucket}
+func NewKeyValueStoreService(
+	replication *replicationmanager.ReplicationManager,
+) *KeyValueStoreService {
+	return &KeyValueStoreService{replication}
 }
 
 func (s *KeyValueStoreService) Set(args [2]interface{}, reply *string) error {
@@ -43,7 +43,7 @@ func (s *KeyValueStoreService) Set(args [2]interface{}, reply *string) error {
 		return errors.New("set->value is nil")
 	}
 
-	if err := s.db.Set(s.bucket, *key, value); err != nil {
+	if err := s.replication.Set(*key, value); err != nil {
 		return err
 	}
 
@@ -64,12 +64,17 @@ func (s *KeyValueStoreService) Get(args [1]interface{}, reply *interface{}) erro
 		return errors.New("get->key is nil")
 	}
 
-	value, ok := s.db.Get(s.bucket, *key)
-	if !ok {
-		return errors.New("get->key not found")
+	value, err := s.replication.Get(*key, replicationmanager.ReadFromLeader)
+	if err != nil {
+		return fmt.Errorf("get->key not found: %w", err)
 	}
 
-	json.Unmarshal(value, &reply)
+	marshalValue, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("get->marshal value=%+v error: %w", value, err)
+	}
+
+	json.Unmarshal(marshalValue, &reply)
 	return nil
 }
 
