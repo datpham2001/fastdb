@@ -26,11 +26,11 @@ func (rm *ReplicationManager) Get(key int, preference ReadPreference) (*GetResul
 		return rm.getLocal(key)
 	}
 
-	if rm.election.IsLeader() {
+	if rm.Election.NodeID == rm.Election.CoordinatorID {
 		return rm.getLocal(key)
-	} else {
-		return rm.getFromLeader(key)
 	}
+
+	return rm.getFromLeader(key)
 }
 
 func (rm *ReplicationManager) getLocal(key int) (*GetResult, error) {
@@ -42,24 +42,23 @@ func (rm *ReplicationManager) getLocal(key int) (*GetResult, error) {
 	return &GetResult{
 		Value:     value,
 		Found:     true,
-		Source:    fmt.Sprintf("node-%d", rm.nodeID),
+		Source:    fmt.Sprintf("Node-%d", rm.nodeID),
 		Timestamp: time.Now(),
 	}, nil
 }
 
 func (rm *ReplicationManager) getFromLeader(key int) (*GetResult, error) {
-	leader := rm.election.GetCurrentLeader()
-	if leader.ID == -1 {
+	leaderID := rm.Election.CoordinatorID
+	if leaderID == -1 {
 		return nil, fmt.Errorf("no leader available")
 	}
 
-	// Get leader's address from peers map
-	leader, exists := rm.election.Peers[leader.ID]
-	if !exists {
-		return nil, fmt.Errorf("leader node %d not found in peers list", leader.ID)
+	leaderAddr, ok := rm.Election.Peers[leaderID]
+	if !ok {
+		return nil, fmt.Errorf("leader node %d not found in peers list", leaderID)
 	}
 
-	client, err := rpc.DialHTTP("tcp", leader.Address)
+	client, err := rpc.Dial("tcp", leaderAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to leader: %w", err)
 	}
@@ -75,7 +74,7 @@ func (rm *ReplicationManager) getFromLeader(key int) (*GetResult, error) {
 }
 
 func (rm *ReplicationManager) HandleGet(key int, result *GetResult) error {
-	if !rm.election.IsLeader() {
+	if rm.Election.NodeID != rm.Election.CoordinatorID {
 		return fmt.Errorf("not the leader")
 	}
 

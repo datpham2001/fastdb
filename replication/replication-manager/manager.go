@@ -25,19 +25,19 @@ const (
 type ReplicationManager struct {
 	nodeID   int
 	db       *fastdb.DB
-	election *election.BullyElection
+	Election *election.BullyAlgorithm
 	bucket   string
 }
 
 func NewReplicationManager(
 	nodeID int,
 	db *fastdb.DB,
-	election *election.BullyElection,
+	election *election.BullyAlgorithm,
 ) *ReplicationManager {
 	return &ReplicationManager{
 		nodeID:   nodeID,
 		db:       db,
-		election: election,
+		Election: election,
 		bucket:   KeyBucket,
 	}
 }

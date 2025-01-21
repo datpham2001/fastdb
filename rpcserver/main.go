@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net"
@@ -23,7 +24,7 @@ var db *fastdb.DB
 
 type KVStoreService interface {
 	Set(args [2]interface{}, reply *string) error
-	Get(args [1]interface{}, reply *interface{}) error
+	Get(args [1]interface{}, reply *replicationmanager.GetResult) error
 }
 
 type KeyValueStoreImpl struct {
@@ -34,7 +35,7 @@ func (k *KeyValueStoreImpl) Set(args [2]interface{}, reply *string) error {
 	return k.service.Set(args, reply)
 }
 
-func (k *KeyValueStoreImpl) Get(args [1]interface{}, reply *interface{}) error {
+func (k *KeyValueStoreImpl) Get(args [1]interface{}, reply *replicationmanager.GetResult) error {
 	return k.service.Get(args, reply)
 }
 
@@ -58,18 +59,17 @@ func initDB() error {
 }
 
 func init() {
+	gob.Register(map[string]interface{}{})
+	gob.Register([]interface{}{})
+	gob.Register([]byte{})
+	gob.Register(string(""))
+	gob.Register(int(0))
+	gob.Register(float64(0))
+	gob.Register(bool(false))
+
 	if err := initDB(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-}
-
-func getNode() (int, string) {
-	nodeID, err := strconv.Atoi(os.Args[1])
-	if err != nil {
-		log.Fatalf("Error converting node ID to int: %v", err)
-	}
-
-	return nodeID, os.Args[2]
 }
 
 func main() {
@@ -77,37 +77,59 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	nodeID, nodePort := getNode()
-	nodeAddress := fmt.Sprintf("localhost:%s", nodePort)
+	var (
+		nodeID int            = 1
+		coorID int            = 3
+		peers  map[int]string = map[int]string{
+			1: "localhost:8080",
+			2: "localhost:8081",
+			3: "localhost:8082",
+		}
+	)
 
-	peers := map[int]string{
-		1: "localhost:8080",
-		2: "localhost:8081",
-		3: "localhost:8082",
-		4: "localhost:8083",
-	}
-	delete(peers, nodeID)
-
-	election := election.NewBullyElection(nodeID, nodeAddress, peers)
-	replicationManager := replicationmanager.NewReplicationManager(nodeID, db, election)
-	keyValueStoreService := service.NewKeyValueStoreService(replicationManager)
-	keyValueStoreImpl := &KeyValueStoreImpl{keyValueStoreService}
-	if err := rpc.RegisterName("KeyValueStoreService", keyValueStoreImpl); err != nil {
-		log.Fatalf("Error registering service: %v", err)
+	myID, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatalf("Error converting nodeID to int: %v", err)
 	}
 
-	listener, err := net.Listen("tcp", ":"+nodePort)
+	delete(peers, myID)
+	bully := election.NewBullyAlgorithm(nodeID, coorID, peers)
+	bully.NodeID = myID
+
+	replicationManager := replicationmanager.NewReplicationManager(myID, db, bully)
+	kvStore := service.NewKeyValueStoreService(replicationManager)
+	kvStoreImp := &KeyValueStoreImpl{service: kvStore}
+
+	myAddr := "localhost:" + os.Args[2]
+	address, err := net.ResolveTCPAddr("tcp", myAddr)
+	if err != nil {
+		log.Fatalf("Error resolving TCP address: %v", err)
+	}
+
+	inbound, err := net.ListenTCP("tcp", address)
 	if err != nil {
 		log.Fatalf("Error listening: %v", err)
 	}
 
-	fmt.Println("Server is running on port", nodePort)
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Fatalf("Error accepting connection: %v", err)
-		}
+	rpc.RegisterName("BullyAlgorithm", bully)
+	rpc.RegisterName("ReplicationManager", replicationManager)
+	rpc.RegisterName("KeyValueStore", kvStoreImp)
+	fmt.Println("server is running with IP address and port number:", address)
+	go rpc.Accept(inbound)
 
-		go rpc.ServeConn(conn)
+	reply := ""
+	fmt.Printf("Is this node recovering from a crash?(y/n): ") // Recovery from crash.
+	fmt.Scanf("%s", &reply)
+	if reply == "y" {
+		fmt.Println("Log: Invoking Elections")
+		bully.StartElection()
+	}
+
+	random := ""
+	for {
+		fmt.Printf("Press enter for %d to communicate with coordinator.\n", bully.NodeID)
+		fmt.Scanf("%s", &random)
+		bully.CommunicateToCoordinator()
+		fmt.Println("")
 	}
 }

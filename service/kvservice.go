@@ -51,7 +51,7 @@ func (s *KeyValueStoreService) Set(args [2]interface{}, reply *string) error {
 	return nil
 }
 
-func (s *KeyValueStoreService) Get(args [1]interface{}, reply *interface{}) error {
+func (s *KeyValueStoreService) Get(args [1]interface{}, reply *replicationmanager.GetResult) error {
 	if args[0] == nil {
 		return errors.New("get->key is nil")
 	}
@@ -69,12 +69,7 @@ func (s *KeyValueStoreService) Get(args [1]interface{}, reply *interface{}) erro
 		return fmt.Errorf("get->key not found: %w", err)
 	}
 
-	marshalValue, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("get->marshal value=%+v error: %w", value, err)
-	}
-
-	json.Unmarshal(marshalValue, &reply)
+	*reply = *value
 	return nil
 }
 

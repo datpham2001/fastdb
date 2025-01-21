@@ -2,15 +2,15 @@ package replicationmanager
 
 import (
 	"fmt"
+	"log"
 	"net/rpc"
 	"sync"
 	"time"
 )
 
 func (rm *ReplicationManager) Set(key int, value []byte) error {
-	if !rm.election.IsLeader() {
-		leader := rm.election.GetCurrentLeader()
-		return fmt.Errorf("not the leader, current leader is node %d", leader.ID)
+	if rm.Election.NodeID != rm.Election.CoordinatorID {
+		return fmt.Errorf("not the leader, current leader is Node-%d", rm.Election.CoordinatorID)
 	}
 
 	if err := rm.replicateToBackups(key, value); err != nil {
@@ -25,13 +25,13 @@ func (rm *ReplicationManager) Set(key int, value []byte) error {
 }
 
 func (rm *ReplicationManager) replicateToBackups(key int, value []byte) error {
-	var wg sync.WaitGroup
-	peers := make([]string, len(rm.election.Peers))
-	for _, peer := range rm.election.Peers {
-		peers = append(peers, peer.Address)
+	var peers []string
+	for _, peer := range rm.Election.Peers {
+		peers = append(peers, peer)
 	}
 	errors := make(chan error, len(peers))
 
+	wg := sync.WaitGroup{}
 	for _, peer := range peers {
 		wg.Add(1)
 		go func(peerAddr string) {
@@ -54,11 +54,12 @@ func (rm *ReplicationManager) replicateToBackups(key int, value []byte) error {
 		return fmt.Errorf("replication errors: %v", errs)
 	}
 
+	log.Println("Replication to backups completed successfully")
 	return nil
 }
 
 func (rm *ReplicationManager) sendReplication(peerAddr string, key int, value []byte) error {
-	client, err := rpc.DialHTTP("tcp", peerAddr)
+	client, err := rpc.Dial("tcp", peerAddr)
 	if err != nil {
 		return fmt.Errorf("failed to dial peer %s: %w", peerAddr, err)
 	}
@@ -87,7 +88,7 @@ func (rm *ReplicationManager) HandleReplication(
 	request ReplicationRequest,
 	response *ReplicationResponse,
 ) error {
-	if request.LeaderID != rm.election.GetCurrentLeader().ID {
+	if request.LeaderID != rm.Election.CoordinatorID {
 		response.Success = false
 		return nil
 	}

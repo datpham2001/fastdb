@@ -5,9 +5,9 @@ import "time"
 type MessageType string
 
 const (
-	MessageTypePing                MessageType = "ping"
-	MessageTypeElectionInProgresss MessageType = "election_in_progress"
-	MessageTypeElectionCompleted   MessageType = "election_completed"
+	MessageTypePing               MessageType = "ping"
+	MessageTypeElectionInProgress MessageType = "election_in_progress"
+	MessageTypeElectionCompleted  MessageType = "election_completed"
 )
 
 type Message struct {

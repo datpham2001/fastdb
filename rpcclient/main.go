@@ -2,17 +2,36 @@ package main
 
 import (
 	"bufio"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net/rpc"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
-	rpcPort = "localhost:8080"
+	rpcPort = "localhost:8082"
 )
+
+type GetResult struct {
+	Value     []byte
+	Found     bool
+	Timestamp time.Time
+	Source    string
+}
+
+func init() {
+	gob.Register(map[string]interface{}{})
+	gob.Register([]interface{}{})
+	gob.Register([]byte{})
+	gob.Register(string(""))
+	gob.Register(int(0))
+	gob.Register(float64(0))
+	gob.Register(bool(false))
+}
 
 func main() {
 	client, err := rpc.Dial("tcp", rpcPort)
@@ -49,7 +68,7 @@ func main() {
 
 	var setReply string
 	setArgs := [2]interface{}{key, valueType}
-	err = client.Call("KeyValueStoreService.Set", setArgs, &setReply)
+	err = client.Call("KeyValueStore.Set", setArgs, &setReply)
 	if err != nil {
 		log.Fatalf("Error calling Set method: %v", err)
 	}
@@ -61,12 +80,15 @@ func main() {
 	fmt.Print("\nEnter key to retrieve: ")
 	fmt.Scan(&key)
 
-	var getReply interface{}
+	var getReply GetResult
 	getArgs := [1]interface{}{key}
-	err = client.Call("KeyValueStoreService.Get", getArgs, &getReply)
+	err = client.Call("KeyValueStore.Get", getArgs, &getReply)
 	if err != nil {
 		log.Fatalf("Error calling Get method: %v", err)
 	}
 
-	fmt.Printf("Get reply for key %d is: %v (type: %T)\n", key, getReply, getReply)
+	fmt.Printf(
+		"Value retrieved: [Value] = %s, [Found] = %t, [Timestamp] = %s, [Source] = %s\n",
+		getReply.Value, getReply.Found, getReply.Timestamp, getReply.Source,
+	)
 }
